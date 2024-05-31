@@ -46,8 +46,8 @@ async function startAuth() {
   const codeChallenge = await generateCodeChallenge(codeVerifier);
   const state = generateRandomString(16);
 
-  await OAUTH.put('code_verifier', codeVerifier);
-  await OAUTH.put('oauth_state', state);
+  await OAUTH_EX.put('code_verifier', codeVerifier);
+  await OAUTH_EX.put('oauth_state', state);
 
   const authUrl = `https://digilocker.meripehchaan.gov.in/public/oauth2/1/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=files.issueddocs&state=${state}&code_challenge=${codeChallenge}&code_challenge_method=S256`;
 
@@ -57,8 +57,8 @@ async function startAuth() {
 async function handleOAuthCallback(url) {
   const code = url.searchParams.get('code');
   const state = url.searchParams.get('state');
-  const savedState = await OAUTH.get('oauth_state');
-  const codeVerifier = await OAUTH.get('code_verifier');
+  const savedState = await OAUTH_EX.get('oauth_state');
+  const codeVerifier = await OAUTH_EX.get('code_verifier');
 
   if (state !== savedState) {
       return new Response('Invalid state', { status: 400 });
@@ -84,13 +84,13 @@ async function handleOAuthCallback(url) {
   }
 
   const tokenData = await tokenResponse.json();
-  await OAUTH.put('access_token', tokenData.access_token);
+  await OAUTH_EX.put('access_token', tokenData.access_token);
 
   return Response.redirect(baseurl, 302);
 }
 
 async function getAccessToken() {
-  const accessToken = await OAUTH.get('access_token');
+  const accessToken = await OAUTH_EX.get('access_token');
   if (!accessToken) {
       return new Response('Access token not found', { status: 404 });
   }
@@ -99,7 +99,7 @@ async function getAccessToken() {
 }
 
 async function listDocuments() {
-  const accessToken = await OAUTH.get('access_token');
+  const accessToken = await OAUTH_EX.get('access_token');
   if (!accessToken) {
       return new Response('Not authorized', { status: 401 });
   }
@@ -119,7 +119,7 @@ async function listDocuments() {
 }
 
 async function downloadDocument(url) {
-  const accessToken = await OAUTH.get('access_token');
+  const accessToken = await OAUTH_EX.get('access_token');
   const documentUri = url.searchParams.get('uri');
 
   if (!accessToken) {
@@ -152,26 +152,41 @@ function html() {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cloudflare Worker OAuth Flow</title>
+  <style>
+    .download-link {display: block;}
+  </style>
 </head>
 <body>
-  <button id="authorize-btn">Authorize</button>
-  <button id="get-token-btn">Get Access Token</button>
+  <button id="authorize-btn">Attach using digilocker</button>
+  <!--<button id="get-token-btn">Get Access Token</button>
   <button id="list-documents-btn">List Documents</button>
-  <button id="download-document-btn">Download Document</button>
+  <button id="download-document-btn">Download Document</button>-->
 
-  <div id="document-list"></div>
+  <ul id="document-list"></ul>
 
   <script>
       const workerUrl = window.location.origin;
-
+      const downloadUrl = 'https://digilocker.meripehchaan.gov.in/public/oauth2/1/file/'
+      let childWindow = null
+      var timer = null; 
       document.getElementById('authorize-btn').addEventListener('click', startAuth);
-      document.getElementById('get-token-btn').addEventListener('click', getAccessToken);
-      document.getElementById('list-documents-btn').addEventListener('click', listDocuments);
-      document.getElementById('download-document-btn').addEventListener('click', downloadDocument);
+      // document.getElementById('get-token-btn').addEventListener('click', getAccessToken);
+      // document.getElementById('list-documents-btn').addEventListener('click', listDocuments);
+      // document.getElementById('download-document-btn').addEventListener('click', downloadDocument);
 
       function startAuth() {
-        const childWindow = window.open(\`\${workerUrl}/authorize\`, 'oauth', 'width=500,height=600');
+        childWindow = window.open(\`\${workerUrl}/authorize\`, 'oauth', 'width=500,height=600,popup=yes');
+        timer = setInterval(checkChild, 500);
       }
+
+      async function checkChild() {
+            if (childWindow && childWindow.closed) {
+                await listDocuments();
+                childWindow=null;
+                timer=null;
+                clearInterval(timer);
+            }
+        }
 
       window.addEventListener('message', event => {
             if (event.data.type === 'auth') {
@@ -219,20 +234,23 @@ function html() {
 
           if (documents) {
             documents.items.forEach(doc => {
-                let docItem = document.createElement('div');
                 let link = document.createElement('a');
-                link.href=\`\${workerUrl}/download-document?uri=\${encodeURIComponent(doc.uri)}\`
+                let list = document.createElement('li');
+                link.href='#0';
                 link.textContent = \`\${doc.name}\`;
-                docItem.textContent = \`Document: \${doc.name} - \${doc.uri}\`;
-                documentListDiv.appendChild(docItem);
-                documentListDiv.appendChild(link);
+                link.addEventListener('click', function(event) {
+                    event.preventDefault();
+                    downloadDocument(\`\${doc.uri}\`);
+                })
+                list.appendChild(link);
+                documentListDiv.appendChild(list);
             });
           }
       }
 
-      async function downloadDocument() {
+      async function downloadDocument(documentUri) {
           const accessToken = localStorage.getItem('accessToken');
-          const documentUri = prompt('Enter Document URI to download:');
+        //   const documentUri = documentUri;
 
           if (!accessToken) {
               console.error('Not authorized');

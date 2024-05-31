@@ -15,6 +15,6 @@ CLIENT_SECRET = "257fd6ee3098f1aac423"
 BASEURL = "https://quiet-silence-dd82.stevep-8b5.workers.dev"
 
 # Bind a KV Namespace. Use KV as persistent storage for small key-value pairs.
-kv_namespaces = [
-    { binding = "OAUTH", id = "e11fe93225da4ebb8d9ea2462c78b200" }
-]
+[[kv_namespaces]]
+binding="OAUTH_EX"
+id="9b97a8723eb5498fa72d8c61b4949155"
